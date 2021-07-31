@@ -332,6 +332,8 @@ class Square extends React.Component {
 			<button className={className} onClick={() => this.props.onClick()}>
 				{this.props.pieceImgSrc ? <img src={this.props.pieceImgSrc} alt={this.props.pieceImgSrc} /> : null}
 				{this.props.stackImgSrc ? <img className="stack-image" src={this.props.stackImgSrc} alt={this.props.stackImgSrc} /> : null}
+				{this.props.rowIndicatorValue ? <p className="row-indicator">{this.props.rowIndicatorValue}</p> : null}
+				{this.props.colIndicatorValue ? <p className="col-indicator">{this.props.colIndicatorValue}</p> : null}
 			</button>
 		);
 	}
@@ -358,6 +360,9 @@ class Board extends React.Component {
 												(usingMask === "light-mask" && Math.abs(coord.y - doingEnPassantCoord.y) === 2) ? process.env.PUBLIC_URL + "/" + doingEnPassantPiece.pieceColor + "-rock.png" :
 												(usingMask === "light-mask" && Math.abs(coord.y - doingEnPassantCoord.y) === 3) ? process.env.PUBLIC_URL + "/" + doingEnPassantPiece.pieceColor + "-bishop.png" :
 												(piece) ? process.env.PUBLIC_URL + "/" + piece.pieceColor + "-" + piece.pieceType + ".png" : null;
+
+		const rowIndicatorValue = (coord.x === 0) ? rowNum - coord.y : null;
+		const colIndicatorValue = (coord.y === colNum - 1) ? String.fromCharCode(97 + coord.x) : null;
 		return (
 			<Square
 				key={idx}
@@ -367,19 +372,15 @@ class Board extends React.Component {
 				mayMove={mayMove}
 				usingMask={usingMask}
 				onClick={() => this.props.onClick(coord)}
+				rowIndicatorValue={rowIndicatorValue}
+				colIndicatorValue={colIndicatorValue}
 			/>
 		);
-	}
-
-	renderIndicator() {
-
 	}
 
 	render() {
 		return (
 			<div className="board-container">
-				<div className="indicator-container">{false}</div>
-				<div className="indicator-container">{false}</div>
 				{[...Array(rowNum)].map((ele, y) =>
 					<div className="board-row" key={y}>
 						{[...Array(colNum)].map((ele, x) => 
