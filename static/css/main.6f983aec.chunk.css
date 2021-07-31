@@ -1,2 +1,0 @@
-.game{width:100vw;height:100vh;display:flex;justify-content:center;align-items:center}.board-container{display:table}.square{border:1px solid;float:left;display:flex;justify-content:center;align-items:center}.square,.stack-image{width:70px;height:70px}.stack-image{position:absolute}.black-square{background:#779455}.white-square{background:#ebebd0}.yellow-square{background:#baca2c}.orange-square{background:#c57b50}
-/*# sourceMappingURL=main.6f983aec.chunk.css.map */
