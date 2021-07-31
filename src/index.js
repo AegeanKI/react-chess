@@ -45,13 +45,15 @@ function getInitSquares() {
 }
 
 class Piece {
-	constructor(pieceColor, pieceType) {
+	constructor(pieceColor, pieceType, direction=[], maxMultiple=Math.max(rowNum, colNum)) {
 		this.pieceColor = pieceColor;
 		this.pieceType = pieceType;
 		this.moved = false;
+		this.direction = direction;
+		this.maxMultiple = maxMultiple;
 	}
 
-	hasPiece(coord, squares) {
+	hasPiece(coord, squares) { 
 		return squares[coord.y][coord.x];
 	}
 
@@ -67,8 +69,24 @@ class Piece {
 		return (this.isValidCoord(coord) && this.hasPiece(coord, squares) && !this.isSamePieceColor(coord, squares))
 	}
 
-	getCanMovePositionInGeneralRule(coord, squares) { return; }
-	updateCanMovePositionInSpecialRule(coord, squares, positions) { return positions; }
+	getCanMovePositionInGeneralRule(coord, squares) {
+		let canMovePositions = [];
+		this.direction.forEach((dir) => {
+			for (let times = 1; times <= this.maxMultiple; times++) {
+				let nextCoord = Coord(coord.y + times * dir[0], coord.x + times * dir[1]);
+
+				if (!this.isValidCoord(nextCoord)) break;
+				if (this.hasPiece(nextCoord, squares)) {
+					if (this.canEatPiece(nextCoord, squares))
+						canMovePositions.push(nextCoord);
+					break;
+				}
+				canMovePositions.push(nextCoord);
+			}
+		});
+		return canMovePositions;
+	}
+
 	getCanMovePosition(coord, squares, lastMove) {
 		let positions = this.getCanMovePositionInGeneralRule(coord, squares);
 		positions = this.updateCanMovePositionInSpecialRule(coord, squares, positions, lastMove);
@@ -76,15 +94,16 @@ class Piece {
 		return positions;
 	}
 
+	tryToEnPassant(coord) { return false; }
 	isUsingSpeicalRule(squares, startPos, endPos) { return false; }
+	updateCanMovePositionInSpecialRule(coord, squares, positions) { return positions; }
 	updateSquaresUsingSpecialRule(squares, startPos, endPos) { return squares; }
 	updateSquaresUsingEnPassant(squares, coord, choose) { return squares; }
-
 	updateSquares(BeforeSquares, startPos, endPos) {
 		let squares = BeforeSquares.map(arr => arr.slice());
 		if (squares[startPos.y][startPos.x].isUsingSpeicalRule(squares, startPos, endPos))
 			squares = squares[startPos.y][startPos.x].updateSquaresUsingSpecialRule(squares, startPos, endPos);
-			// squares[startPos.y][endPos.x] = null;
+
 		squares[endPos.y][endPos.x] = squares[startPos.y][startPos.x];
 		squares[startPos.y][startPos.x] = null;
 		squares[endPos.y][endPos.x].moved = true;
@@ -94,11 +113,6 @@ class Piece {
 
 		return squares;
 	}
-
-	tryToEnPassant(coord) { return false; }
-	// move() {
-	// 	this.moved = true;
-	// }
 };
 
 class Pawn extends Piece {
@@ -159,101 +173,42 @@ class Pawn extends Piece {
 										 (Math.abs(choose.y - coord.y) === 2) ? new Rock(this.pieceColor) :
 										 (Math.abs(choose.y - coord.y) === 3) ? new Bishop(this.pieceColor) : null;
 		squares[coord.y][coord.x] = newPiece;
-		// if (choose.y ===)
 		return squares;
 	}
 };
 
 class Rock extends Piece {
 	constructor(pieceColor) {
-		super(pieceColor, "rock");
-	}
-
-	getCanMovePositionInGeneralRule(coord, squares) {
 		const directionForRock = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-		let canMovePositions = [];
-		directionForRock.forEach((dir) => {
-			let nextCoord = Coord(coord.y + dir[0], coord.x + dir[1]);
-			for (; super.isValidCoord(nextCoord) && !super.hasPiece(nextCoord, squares); nextCoord = Coord(nextCoord.y + dir[0], nextCoord.x + dir[1]))
-					canMovePositions.push(nextCoord);
-			if (super.canEatPiece(nextCoord, squares))
-				canMovePositions.push(nextCoord);
-		});
-		return canMovePositions;
+		super(pieceColor, "rock", directionForRock);
 	}
 }
 
 class Bishop extends Piece {
 	constructor(pieceColor) {
-		super(pieceColor, "bishop");
-	}
-
-	getCanMovePositionInGeneralRule(coord, squares) {
 		const directionForBishop = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
-		let canMovePositions = [];
-		directionForBishop.forEach((dir) => {
-			let nextCoord = Coord(coord.y + dir[0], coord.x + dir[1]);
-			for (; super.isValidCoord(nextCoord) && !super.hasPiece(nextCoord, squares); nextCoord = Coord(nextCoord.y + dir[0], nextCoord.x + dir[1]))
-					canMovePositions.push(nextCoord);
-			if (super.canEatPiece(nextCoord, squares))
-				canMovePositions.push(nextCoord);
-		});
-		return canMovePositions;
+		super(pieceColor, "bishop", directionForBishop);
 	}
 }
 
 class Queen extends Piece {
 	constructor(pieceColor) {
-		super(pieceColor, "queen");
-	}
-
-	getCanMovePositionInGeneralRule(coord, squares) {
 		const directionForQueen = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-		let canMovePositions = [];
-		directionForQueen.forEach((dir) => {
-			let nextCoord = Coord(coord.y + dir[0], coord.x + dir[1]);
-			for (; super.isValidCoord(nextCoord) && !super.hasPiece(nextCoord, squares); nextCoord = Coord(nextCoord.y + dir[0], nextCoord.x + dir[1]))
-					canMovePositions.push(nextCoord);
-			if (super.canEatPiece(nextCoord, squares))
-				canMovePositions.push(nextCoord);
-		});
-		return canMovePositions;
+		super(pieceColor, "queen", directionForQueen);
 	}
 }
 
 class Knight extends Piece {
 	constructor(pieceColor) {
-		super(pieceColor, "knight");
-	}
-
-	getCanMovePositionInGeneralRule(coord, squares) {
 		const directionForKnight = [[2, 1], [-2, 1], [2, -1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]];
-		let canMovePositions = [];
-
-		directionForKnight.forEach((dir) => {
-			let nextCoord = Coord(coord.y + dir[0], coord.x + dir[1]);
-			if (super.isValidCoord(nextCoord) && (!super.hasPiece(nextCoord, squares) || !super.isSamePieceColor(nextCoord, squares)))
-				canMovePositions.push(nextCoord);
-		});
-		return canMovePositions;
+		super(pieceColor, "knight", directionForKnight, 1);
 	}
 }
 
 class King extends Piece {
 	constructor(pieceColor) {
-		super(pieceColor, "king");
-	}
-
-	getCanMovePositionInGeneralRule(coord, squares) {
 		const directionForKing = [[1, 1], [-1, 1], [1, -1], [-1, -1], [1, 0], [0, -1], [-1, 0], [0, 1]];
-		let canMovePositions = [];
-
-		directionForKing.forEach((dir) => {
-			let nextCoord = Coord(coord.y + dir[0], coord.x + dir[1]);
-			if (super.isValidCoord(nextCoord) && (!super.hasPiece(nextCoord, squares) || !super.isSamePieceColor(nextCoord, squares)))
-				canMovePositions.push(nextCoord);
-		});
-		return canMovePositions;
+		super(pieceColor, "king", directionForKing, 1);
 	}
 
 	mayLoose(squares, startPos, endPos, lastMove) {
@@ -273,15 +228,13 @@ class King extends Piece {
 					"piece": nextSquares[endPos.y][endPos.x],
 				});
 				if (mayMovePosition.some(ele => ele.y === endPos.y && ele.x === endPos.x)) {
-					console.log(nextSquares[y][x].pieceColor, "-", nextSquares[y][x].pieceType, " may cause lose");
 					return true;
 				}
 			}
 		}
 
-		const directionForKing = [[1, 1], [-1, 1], [1, -1], [-1, -1], [1, 0], [0, -1], [-1, 0], [0, 1]];
-		for (let i = 0; i < directionForKing.length; i++) {
-			const mayMovePosition = Coord(anotherKingPosition.y + directionForKing[i][0], anotherKingPosition.x + directionForKing[i][1]);
+		for (let i = 0; i < this.direction.length; i++) {
+			const mayMovePosition = Coord(anotherKingPosition.y + this.direction[i][0], anotherKingPosition.x + this.direction[i][1]);
 			if (mayMovePosition.y === endPos.y && mayMovePosition.x === endPos.x)
 				return true;
 		}
@@ -471,9 +424,6 @@ class Game extends React.Component {
 						mayMovePosition={this.state.mayMovePosition}
 						doingEnPassantCoord={this.state.doingEnPassantCoord}
 					/>
-					{/*<Indicator
-						squares={[...Array(rowNum)].map((ele, idx) => idx)}
-					/>*/}
 				</div>
 			</div>
 		);
