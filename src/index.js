@@ -1,401 +1,21 @@
-import React from 'react';
-import ReactDOM from 'react-dom';
-import './index.css';
+import React, { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
+import io from "socket.io-client";
+import "./index.css";
+import {Coord, Chess, Board} from "./Chess.js";
+import {rowNum, colNum} from "./Constant.js";
 
-const rowNum = 8, colNum = 8;
+function Square(props) {
+	const className = "square " + props.squareBackgroundColor;
 
-class Coord {
-	constructor(y, x) {
-		this.y = y;
-		this.x = x;
-	}
-
-	add(anotherCoord) {
-		return new Coord(this.y + anotherCoord.y, this.x + anotherCoord.x);
-	}
-
-	minus(anotherCoord) {
-		return new Coord(this.y - anotherCoord.y, this.x - anotherCoord.x);
-	}
-
-	equal(anotherCoord) {
-		return (anotherCoord !== null && this.y === anotherCoord.y && this.x === anotherCoord.x);
-	}
-
-	mul(times) {
-		return new Coord(this.y * times, this.x * times);
-	}
-
-	div(times) {
-		return new Coord(this.y / times, this.x / times);
-	}
-
-	step(yInc, xInc) {
-		return new Coord(this.y + yInc, this.x + xInc);
-	}
-
-	xDis(anotherCoord) {
-		return Math.abs(this.x - anotherCoord.x);
-	}
-
-	yDis(anotherCoord) {
-		return Math.abs(this.y - anotherCoord.y);
-	}
-
-	xEqual(anotherCoord) {
-		return this.xDis(anotherCoord) === 0;
-	}
-
-	yEqual(anotherCoord) {
-		return this.yDis(anotherCoord) === 0;
-	}
-};
-
-function chess(pieceName, pieceColor) {
-  switch (pieceName) {
-    case 'pawn': return new Pawn(pieceColor);
-    case 'queen': return new Queen(pieceColor);
-    case 'king': return new King(pieceColor);
-    case 'rock': return new Rock(pieceColor);
-    case 'bishop': return new Bishop(pieceColor);
-    case 'knight': return new Knight(pieceColor);
-		default: return null;
-  }
-}
-
-
-class Board {
-	constructor(squares) {
-		this.squares = squares.map(row => row.map(piece => (piece ? piece.copyPiece() : null)));
-	}
-
-	copyBoard() {
-		return new Board(this.squares);
-	}
-
-	isValidCoord(curPos) {
-		return (curPos !== null && curPos.y >= 0 && curPos.y < rowNum && curPos.x >= 0 && curPos.x < colNum);
-	}
-
-	getPiece(curPos) {
-		if (this.isValidCoord(curPos)){
-			return this.squares[curPos.y][curPos.x];
-		}
-		return null;
-	}
-
-	getPieceCanMovePosition(curPos, lastMove) {
-		if (this.isValidCoord(curPos)) {
-			const piece = this.getPiece(curPos);
-			const positions = piece.getCanMovePositionInGeneralRule(curPos, this);
-			return piece.updateCanMovePositionInSpecialRule(curPos, this, positions, lastMove);
-		}
-		return [];
-	}
-
-	hasPiece(curPos) { 
-		if (this.isValidCoord(curPos)) {
-			return (this.squares[curPos.y][curPos.x] !== null);
-		}
-		return false;
-	}
-
-	hasNoPiece(curPos) {
-		if (this.isValidCoord(curPos)) {
-			return (this.squares[curPos.y][curPos.x] === null);
-		}
-		return false;
-	}
-
-	isSamePieceColor(curPos, targetPos) {
-		return (this.getPiece(curPos).pieceColor === this.getPiece(targetPos).pieceColor);
-	}
-
-	isSamePieceType(curPos, pieceType) {
-		return (this.getPiece(curPos).pieceType === pieceType);
-	}
-
-	canEatPiece(curPos, targetPos) {
-		return (this.isValidCoord(targetPos) && this.hasPiece(targetPos) && !this.isSamePieceColor(curPos, targetPos));
-	}
-
-	setPiece(curPos, piece) {
-		if (this.isValidCoord(curPos)) {
-			this.squares[curPos.y][curPos.x] = piece;
-		}
-	}
-
-	removePiece(curPos) {
-		this.setPiece(curPos, null);
-	}
-
-	isDoingEnPassant(curPos) {
-		if (this.isValidCoord(curPos)) {
-			return (this.isSamePieceType(curPos, "pawn") && (curPos.y === 0 || curPos.y === rowNum - 1));
-		}
-		return false;
-	}
-
-	isUsingSpeicalRule(startPos, endPos) {
-		const usingFirstRule = (this.isSamePieceType(startPos, "pawn") && startPos.xDis(endPos) === 1 && !this.hasPiece(endPos)) ? 1 : null;
-		const usingSecondRule = (this.isSamePieceType(startPos, "king") && startPos.xDis(endPos) === 2) ? 2 : null;
-		return  (usingFirstRule || usingSecondRule);
-	}
-
-	updateBoardByEnPassant(curPos, choose) {
-		let copyBoard = this.copyBoard();
-		const adjustingPieceColor = this.getPiece(curPos).pieceColor;
-		const newPiece = (choose.yDis(curPos) === 0) ? chess("queen", adjustingPieceColor) :
-										 (choose.yDis(curPos) === 1) ? chess("knight", adjustingPieceColor) :
-										 (choose.yDis(curPos) === 2) ? chess("rock", adjustingPieceColor) :
-										 (choose.yDis(curPos) === 3) ? chess("bishop", adjustingPieceColor) : null;
-		copyBoard.setPiece(curPos, newPiece);
-		return copyBoard;
-	}
-
-	updateSquaresUsingSpecialRule(whichSpecialRule, startPos, endPos) {
-		let copyBoard = this.copyBoard();
-		if (whichSpecialRule === 1) {
-			copyBoard.removePiece(new Coord(startPos.y, endPos.x));
-		} else if (whichSpecialRule === 2) {
-			const dir = endPos.minus(startPos).div(2);
-			const rockPos = (dir.x > 0 ? new Coord(startPos.y, colNum - 1) : new Coord(startPos.y, 0));
-			copyBoard.setPiece(endPos.minus(dir), this.getPiece(rockPos));
-			copyBoard.removePiece(rockPos);
-		}
-		return copyBoard;
-	}
-
-	updateBoardByMoving(startPos, endPos) {
-		let copyBoard = this.copyBoard();
-		const whichSpecialRule = this.isUsingSpeicalRule(startPos, endPos);
-		if (whichSpecialRule) {
-			copyBoard = this.updateSquaresUsingSpecialRule(whichSpecialRule, startPos, endPos);
-		}
-		copyBoard.setPiece(endPos, copyBoard.getPiece(startPos));
-		copyBoard.removePiece(startPos);
-		copyBoard.getPiece(endPos).setAlreadyMoved();
-		return copyBoard;
-	}
-
-	updateBoardByPiece(startPos, endPos) {
-		if (this.isDoingEnPassant(startPos)) {
-			return this.updateBoardByEnPassant(startPos, endPos);
-		}
-		return this.updateBoardByMoving(startPos, endPos);
-	}
-
-	mayLoose(startPos, endPos) {
-		const newBoard = this.updateBoardByPiece(startPos, endPos);
-		let anotherKingPosition = null;
-		for (let y = 0; y < rowNum; y++) {
-			for (let x = 0; x < colNum; x++) {
-				const curPos = new Coord(y, x);
-				if (!newBoard.hasPiece(curPos) || newBoard.isSamePieceColor(endPos, curPos)) continue;
-				if (newBoard.isSamePieceType(curPos, "king")) {
-					anotherKingPosition = curPos;
-					continue;
-				}
-				const mayMovePosition = newBoard.getPieceCanMovePosition(curPos, {
-					"startPos": startPos,
-					"endPos": endPos,
-					"piece": newBoard.getPiece(endPos),
-				});
-				if (mayMovePosition.some(ele => ele.equal(endPos))) return true;
-			}
-		}
-
-		const directionForKing = newBoard.getPiece(anotherKingPosition).direction;
-		for (let dir of directionForKing) {
-			const mayMovePosition = anotherKingPosition.add(dir);
-			if (mayMovePosition.equal(endPos)) return true;
-		}
-
-		return false;
-	}
-};
-
-class Piece {
-	constructor(pieceColor, pieceType, alreadyMoved=false, direction=[], maxMultiple=Math.max(rowNum, colNum)) {
-		this.pieceColor = pieceColor;
-		this.pieceType = pieceType;
-		this.alreadyMoved = alreadyMoved;
-		this.direction = direction;
-		this.maxMultiple = maxMultiple;
-	}
-
-	getCanMovePositionInGeneralRule(curPos, board) {
-		let canMovePositions = [];
-		this.direction.forEach((dir) => {
-			for (let times = 1; times <= this.maxMultiple; times++) {
-				let nextPos = curPos.add(dir.mul(times));
-
-				if (!board.isValidCoord(nextPos)) break;
-				if (board.hasPiece(nextPos)) {
-					if (board.canEatPiece(curPos, nextPos))
-						canMovePositions.push(nextPos);
-					break;
-				}
-				canMovePositions.push(nextPos);
-			}
-		});
-		return canMovePositions;
-	}
-
-	updateCanMovePositionInSpecialRule(curPos, board, positions, lastMove) {
-		return positions;
-	}
-
-	getAlreadyMoved() {
-		return this.alreadyMoved;
-	}
-
-	setAlreadyMoved() {
-		this.alreadyMoved = true;
-	}
-};
-
-class Pawn extends Piece {
-	constructor(pieceColor, alreadyMoved=false) {
-		super(pieceColor, "pawn", alreadyMoved);
-	}
-
-	copyPiece() {
-		return new Pawn(this.pieceColor, this.alreadyMoved);
-	}
-
-	getCanMovePositionInGeneralRule(curPos, board) {
-		const startPos = (this.pieceColor === "white") ? rowNum - 2 : 1;
-		const yDir = (this.pieceColor === "white") ? -1 : 1;
-		const firstCoord = curPos.step(yDir, 0);
-		const secondCoord = curPos.step(2 * yDir, 0);
-		let canMovePositions = [];
-		if (board.isValidCoord(firstCoord) && !board.hasPiece(firstCoord)){
-			canMovePositions.push(firstCoord);
-		}
-		if (curPos.y === startPos && !board.hasPiece(firstCoord) && !board.hasPiece(secondCoord)){
-			canMovePositions.push(secondCoord);
-		}
-		return canMovePositions;
-	}
-
-	updateCanMovePositionInSpecialRule(curPos, board, positions, lastMove) {
-		const yDir = (this.pieceColor === "white") ? -1 : 1;
-		const leftTopCoord = curPos.step(yDir, 1);
-		const rightTopCoord = curPos.step(yDir, -1);
-
-		let newPosition = positions.slice();
-		if (board.canEatPiece(curPos, leftTopCoord)){
-			newPosition.push(leftTopCoord);
-		}
-		if (board.canEatPiece(curPos, rightTopCoord)){
-			newPosition.push(rightTopCoord);
-		}
-		if (lastMove && lastMove.piece.pieceType === "pawn" &&
-		    lastMove.startPos.yDis(lastMove.endPos) === 2 &&
-				lastMove.startPos.xDis(curPos) === 1 &&
-				lastMove.endPos.yDis(curPos) === 0) {
-			newPosition.push(new Coord(curPos.y + yDir, lastMove.startPos.x));
-		}
-		return newPosition;
-	}
-};
-
-class Rock extends Piece {
-	constructor(pieceColor, alreadyMoved=false) {
-		const directionForRock = [new Coord(1, 0), new Coord(0, 1), new Coord(-1, 0), new Coord(0, -1)];
-		super(pieceColor, "rock", alreadyMoved, directionForRock);
-	}
-
-	copyPiece() {
-		return new Rock(this.pieceColor, this.alreadyMoved);
-	}
-}
-
-class Bishop extends Piece {
-	constructor(pieceColor, alreadyMoved=false) {
-		const directionForBishop = [new Coord(1, 1), new Coord(1, -1), new Coord(-1, 1), new Coord(-1, -1)];
-		super(pieceColor, "bishop", alreadyMoved, directionForBishop);
-	}
-
-	copyPiece() {
-		return new Bishop(this.pieceColor, this.alreadyMoved);
-	}
-}
-
-class Queen extends Piece {
-	constructor(pieceColor, alreadyMoved=false) {
-		const directionForQueen = [new Coord(1, 0), new Coord(0, 1), new Coord(-1, 0), new Coord(0, -1),
-															 new Coord(1, 1), new Coord(1, -1), new Coord(-1, 1), new Coord(-1, -1)];
-		super(pieceColor, "queen", alreadyMoved, directionForQueen);
-	}
-
-	copyPiece() {
-		return new Queen(this.pieceColor, this.alreadyMoved);
-	}
-}
-
-class Knight extends Piece {
-	constructor(pieceColor, alreadyMoved=false) {
-		const directionForKnight = [new Coord(2, 1), new Coord(-2, 1), new Coord(2, -1), new Coord(-2, -1),
-																new Coord(1, 2), new Coord(1, -2), new Coord(-1, 2), new Coord(-1, -2)];
-		super(pieceColor, "knight", alreadyMoved, directionForKnight, 1);
-	}
-
-	copyPiece() {
-		return new Knight(this.pieceColor, this.alreadyMoved);
-	}
-}
-
-class King extends Piece {
-	constructor(pieceColor, alreadyMoved=false) {
-		const directionForKing = [new Coord(1, 1), new Coord(-1, 1), new Coord(1, -1), new Coord(-1, -1),
-															new Coord(1, 0), new Coord(0, -1), new Coord(-1, 0), new Coord(0, 1)];
-		super(pieceColor, "king", alreadyMoved, directionForKing, 1);
-	}
-
-	copyPiece() {
-		return new King(this.pieceColor, this.alreadyMoved);
-	}
-
-	updateCanMovePositionInSpecialRule(curPos, board, positions, lastMove) {
-		positions = positions.filter(endPos => !board.mayLoose(curPos, endPos));
-
-		if (!board.getPiece(curPos).getAlreadyMoved()) {
-			const pieceToCheckPositions = [new Coord(curPos.y, 0), new Coord(curPos.y, colNum - 1)];
-			const xDir = [new Coord(0, -1), new Coord(0, 1)];
-			pieceToCheckPositions.forEach((rockPos, idx) => {
-				if (board.hasPiece(rockPos) && board.isSamePieceType(rockPos, "rock") && !board.getPiece(rockPos).getAlreadyMoved()) {
-					for (let nextPos = curPos.add(xDir[idx]); !rockPos.equal(nextPos); nextPos = nextPos.add(xDir[idx])) {
-						if (board.hasPiece(nextPos)) {
-							return;
-						}
-					}
-					if (board.mayLoose(curPos, curPos.add(xDir[idx]), lastMove) ||
-							board.mayLoose(curPos, curPos.add(xDir[idx].mul(2)), lastMove)) {
-						return;
-					}
-					positions.push(curPos.add(xDir[idx].mul(2)));
-				}
-			});
-		}
-		return positions;
-	}
-}
-
-class Square extends React.Component {
-	render() {
-		const className = "square " + this.props.squareBackgroundColor;
-
-		return (
-			<button className={className} onClick={() => this.props.onClick()}>
-				{this.props.pieceImgSrc ? <img src={this.props.pieceImgSrc} alt={this.props.pieceImgSrc} /> : null}
-				{this.props.stackImgSrc ? <img className="stack-image" src={this.props.stackImgSrc} alt={this.props.stackImgSrc} /> : null}
-				{this.props.rowIndicatorValue ? <p className="row-indicator">{this.props.rowIndicatorValue}</p> : null}
-				{this.props.colIndicatorValue ? <p className="col-indicator">{this.props.colIndicatorValue}</p> : null}
-			</button>
-		);
-	}
+	return (
+		<button className={className} onClick={props.onClick}>
+			{props.pieceImgSrc ? <img src={props.pieceImgSrc} alt={props.pieceImgSrc} /> : null}
+			{props.stackImgSrc ? <img className="stack-image" src={props.stackImgSrc} alt={props.stackImgSrc} /> : null}
+			{props.rowIndicatorValue ? <p className="row-indicator">{props.rowIndicatorValue}</p> : null}
+			{props.colIndicatorValue ? <p className="col-indicator">{props.colIndicatorValue}</p> : null}
+		</button>
+	);
 }
 
 class ChessBoard extends React.Component {
@@ -452,11 +72,12 @@ class ChessBoard extends React.Component {
 }
 
 
-class Game extends React.Component {
+class ChessGame extends React.Component {
 	constructor(props) {
 		super(props);
 		this.state = {
 			board: new Board(this.getInitBoard()),
+			canMove: null,
 			nextColor: "white",
 			tryToMove: null,
 			mayMovePosition: [],
@@ -467,11 +88,11 @@ class Game extends React.Component {
 
 	getInitBoard() {
 		let initBoard = Array(rowNum).fill(0).map(x => Array(colNum).fill(null));
-		const piecePos = 'rock knight bishop queen king bishop knight rock'.split(' ');
-		initBoard[0] = piecePos.map((pieceName) => chess(pieceName, "black"));
-		initBoard[1] = [...Array(colNum)].map((ele) => chess("pawn", "black"));
-		initBoard[rowNum - 2] = [...Array(colNum)].map((ele) => chess("pawn", "white"));
-		initBoard[rowNum - 1] = piecePos.map((pieceName) => chess(pieceName, "white"));
+		const piecePos = "rock knight bishop queen king bishop knight rock".split(" ");
+		initBoard[0] = piecePos.map((pieceName) => Chess(pieceName, "black"));
+		initBoard[1] = [...Array(colNum)].map((ele) => Chess("pawn", "black"));
+		initBoard[rowNum - 2] = [...Array(colNum)].map((ele) => Chess("pawn", "white"));
+		initBoard[rowNum - 1] = piecePos.map((pieceName) => Chess(pieceName, "white"));
 		return initBoard;
 	}
 
@@ -489,16 +110,24 @@ class Game extends React.Component {
 			tryToMove: null,
 			mayMovePosition: [],
 		});
+		const historyMove = this.state.historyMove.slice();
+
+		this.sendBoardToServer(newBoard, historyMove[historyMove.length - 1]);
 	}
 
 	handlePieceMoving(coord) {
 		const historyMove = this.state.historyMove.slice();
+		console.log('while moving');
+		console.log('before update board, timestamp =', this.state.board.timestamp);
 		const newBoard = this.state.board.updateBoardByPiece(this.state.tryToMove, coord);
-		historyMove.push({
+		console.log('after update board, timestamp =', newBoard.timestamp);
+		const newMove = {
 			"startPos": this.state.tryToMove,
 			"endPos": coord,
 			"piece": newBoard.getPiece(coord),
-		});
+		};
+		historyMove.push(newMove);
+
 		this.setState({
 			board: newBoard,
 			nextColor: (this.state.nextColor === "black" ? "white" : "black"),
@@ -507,10 +136,13 @@ class Game extends React.Component {
 			mayMovePosition: [],
 		});
 
+
 		if (newBoard.isDoingEnPassant(coord)) {
 			this.setState({
 				doingEnPassantCoord: coord
 			});
+		} else {
+			this.sendBoardToServer(newBoard, newMove);
 		}
 	}
 
@@ -522,6 +154,8 @@ class Game extends React.Component {
 			tryToMove: coord,
 			mayMovePosition: mayMovePosition,
 		});
+
+		// this.sendBoardToServer(null);
 	}
 
 	handleOperationCancel(coord) {
@@ -529,38 +163,157 @@ class Game extends React.Component {
 			tryToMove: null,
 			mayMovePosition: [],
 		});
+
+		// this.sendBoardToServer(null);
+	}
+
+	sendBoardToServer(board, lastMove) {
+		const socket = this.props.socket;
+		if (socket && board) {
+			const sendData = {
+				board: board,
+				lastMove: lastMove
+			};
+			console.log('send to server', sendData);
+			socket.emit("sendToSameRoom", sendData);
+		}
 	}
 
 	handleClick(coord) {
+		// console.log("canMove is", this.state.canMove);
+		// console.log("nextColor is", this.state.nextColor);
 		if (this.state.doingEnPassantCoord) {
 			this.handleDoingEnPassant(coord);
 		} else if (this.state.mayMovePosition.some(ele => ele.equal(coord))) {
 			this.handlePieceMoving(coord);
-		} else if (this.state.board.hasPiece(coord) && this.state.board.getPiece(coord).pieceColor === this.state.nextColor) {
+		} else if (this.state.board.hasPiece(coord) && this.state.board.getPiece(coord).pieceColor === this.state.nextColor && this.state.nextColor === this.state.canMove) {
+		// } else if (this.state.board.hasPiece(coord) && this.state.board.getPiece(coord).pieceColor === this.state.nextColor) {
 			this.handlePieceTryToMove(coord);
 		} else {
 			this.handleOperationCancel(coord);
 		}
 	}
 
+	static getDerivedStateFromProps(nextProps, prevState) {
+		const nextCanMove = nextProps.orderFromServer === 0 ? "white" : 
+												nextProps.orderFromServer === 1 ? "black" : null;
+		if (nextCanMove !== prevState.canMove) {
+			console.log('set canMove:', nextCanMove);
+			return {
+				canMove: nextCanMove
+			}
+		}
+
+		if (nextProps.boardFromServer &&
+			  nextProps.boardFromServer.timestamp > prevState.board.timestamp &&
+				prevState.nextColor !== nextCanMove) {
+			console.log('set board:', nextProps.boardFromServer);
+			let historyMove = prevState.historyMove.slice();
+			historyMove.push(nextProps.lastMoveFromServer);
+			return {
+				board: nextProps.boardFromServer,
+				historyMove: historyMove,
+				nextColor: (prevState.nextColor === "black" ? "white" : "black"),
+			}
+		} else {
+			// console.log('get board props but not set');
+			// console.log('nextProps.boardFromServer:', nextProps.boardFromServer);
+			// console.log('prevState.board', prevState.board);
+			// console.log('prevState.nextColor', prevState.nextColor);
+			// console.log('nextCanMove', nextCanMove);
+		}
+
+		return null;
+	}
+
 	render() {
+		console.log('re rendering, this.state.board.timestamp:', this.state.board.timestamp);
 		return (
-			<div className="game">
-				<div className="game-chess-board">
-					<ChessBoard
-						board={this.state.board}
-						onClick={(coord) => this.handleClick(coord)}
-						tryToMove={this.state.tryToMove}
-						mayMovePosition={this.state.mayMovePosition}
-						doingEnPassantCoord={this.state.doingEnPassantCoord}
-					/>
-				</div>
+			<div className="chess-game-container">
+				<ChessBoard
+					board={this.state.board}
+					onClick={(coord) => this.handleClick(coord)}
+					tryToMove={this.state.tryToMove}
+					mayMovePosition={this.state.mayMovePosition}
+					doingEnPassantCoord={this.state.doingEnPassantCoord}
+				/>
 			</div>
 		);
 	}
 };
 
+class ConnectToServer extends React.Component {
+	constructor(props) {
+		super(props);
+
+		const newSocket = io("http://localhost:3000", { transports: ["websocket", "polling", "flashsocket"] });
+		this.state = {
+			socket: newSocket
+		};
+		this.listenMessage(newSocket);
+	}
+
+	listenMessage(socket) {
+		if (!socket) return;
+
+		socket.on("connect", () => {
+			console.log("success connect:", socket.id);
+		});
+
+		socket.on("sendToSameRoom", JSONDataFromServer => {
+			// console.log('receive data', JSONDataFromServer);
+			const JSONBoardFromServer = JSONDataFromServer.board;
+			const JSONLastMoveFromServer = JSONDataFromServer.lastMove;
+			if (this.state.board && JSONBoardFromServer.timestamp <= this.state.board.timestamp) return;
+
+			console.log('set boardFromServer:', JSONBoardFromServer);
+			const newBoard = new Board(JSONBoardFromServer);
+			let newLastMove = this.buildLastMoveFromJSON(JSONLastMoveFromServer);
+			// console.log(newLastMove);
+			this.setState({
+				boardFromServer: newBoard,
+				lastMoveFromServer: newLastMove
+			});
+		});
+
+		socket.on("setUserOrderInRoom", orderFromServer => {
+			if (orderFromServer === this.state.orderFromServer) return;
+
+			console.log('set orderFromServer:', orderFromServer);
+			this.setState({
+				orderFromServer: orderFromServer
+			});
+		})
+	};
+
+	buildLastMoveFromJSON(JSONLastMove) {
+		let lastMove = JSONLastMove;
+		lastMove.piece = Chess(lastMove.piece);
+		lastMove.endPos = new Coord(lastMove.endPos.y, lastMove.endPos.x);
+		lastMove.startPos = new Coord(lastMove.startPos.y, lastMove.startPos.x);
+		return lastMove;
+	}
+	// shouldComponentUpdate(nextProps, nextState) {
+	// 	return (nextState.socket && nextState.orderFromServer);
+	// }
+
+	render() {
+		return (
+			<div className="game-container">
+				<ChessGame
+					socket={this.state.socket}
+					orderFromServer={this.state.orderFromServer}
+					boardFromServer={this.state.boardFromServer}
+					lastMoveFromServer={this.state.lastMoveFromServer}
+				/>
+			</div>
+		)
+	}
+};
+
+
 ReactDOM.render(
-	<Game />,
-	document.getElementById('root')
+	// <Game />,
+	<ConnectToServer />,
+	document.getElementById("root")
 );
